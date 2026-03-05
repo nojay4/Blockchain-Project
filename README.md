@@ -1,7 +1,4 @@
-**Team members:**
-•Carter Sammis
-•Emiliano Medina Gonzalez
-•Noah Turner
+**Team members:** Carter Sammis, Emiliano Medina Gonzalez, Noah Turner
 
 
 **Project Abstract (Short, high-level description of the project):**
