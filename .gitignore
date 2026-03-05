@@ -1,0 +1,36 @@
+# Env and secrets (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+web/node_modules/
+
+# Next.js
+.next/
+web/.next/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Forge / Solidity
+contracts/out/
+contracts/cache/
+contracts/lib/
+contracts/broadcast/*/31337/
+contracts/broadcast/**/dry-run/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.log
