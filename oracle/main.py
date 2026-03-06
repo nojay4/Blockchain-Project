@@ -35,10 +35,11 @@ def get_leagues(sport: str):
     with get_client() as client:
         return jsonify(client.get_leagues(sport))
 
+@app.route("/events/<sport>")
 @app.route("/events/<sport>/<league>")
-def get_events(sport: str, league: str):
+def get_events(sport: str, league: str = None):
     with get_client() as client:
-        return jsonify(client.get_events(sport, league=league))
+        return jsonify(client.get_events(sport=sport, league=league))
 
 @app.route("/odds/<event_id>/<bookmakers>")
 def get_odds(event_id: int, bookmakers: str):
