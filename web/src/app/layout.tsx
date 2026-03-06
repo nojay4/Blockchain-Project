@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
+import { Navbar1 } from "@/components/ui/shadcnblocks-com-navbar1";
 
 export const metadata: Metadata = {
   title: "CU SportsBetting",
@@ -22,6 +23,7 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
+        <Navbar1 />
         {children}
       </body>
     </html>
