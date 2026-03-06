@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Code+Pro:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Source+Code+Pro:wght@400;500;600&display=swap');
 
 :root {
   --card: #ffffff;
@@ -16,11 +16,12 @@
   --popover: #ffffff;
   --primary: #34a85a;
   --sidebar: #f9f9fa;
-  --font-mono: "Source Code Pro", monospace;
-  --font-sans: Montserrat, sans-serif;
+  /* Theme fonts: Inter = main UI (sports-betting standard), Playfair = display, Source Code Pro = mono */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
   --secondary: #6495ed;
   --background: #f9f9fa;
-  --font-serif: "Playfair Display", serif;
   --foreground: #333333;
   --destructive: #ef4444;
   --sidebar-ring: #34a85a;
