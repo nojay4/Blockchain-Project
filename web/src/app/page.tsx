@@ -1,8 +1,9 @@
 export default function Home() {
   return (
-    <main>
-      <h1>Sports Betting PoC</h1>
-      <p>Decentralized sports prediction market — connect wallet, view games, place bets.</p>
+    <main className="mx-auto min-h-screen max-w-5xl px-4 py-12">
+      <p className="text-muted-foreground">
+        Select a sport from the menu to view events.
+      </p>
     </main>
   );
 }

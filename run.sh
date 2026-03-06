@@ -4,13 +4,48 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-WITH_ORACLE=false
-for arg in "$@"; do
-  if [[ "$arg" == "--with-oracle" ]]; then
-    WITH_ORACLE=true
-    break
+BACKEND_PORT=8000
+FRONTEND_PORT=3000
+BACKEND_PID=""
+CLEANUP_DONE=0
+
+# Kill any process listening on a given port (macOS/Linux)
+kill_port() {
+  local port=$1
+  local pids
+  pids=$(lsof -ti :"$port" 2>/dev/null) || true
+  if [[ -n "$pids" ]]; then
+    echo "==> Stopping process(es) on port $port (PIDs: $pids)"
+    echo "$pids" | xargs kill -9 2>/dev/null || true
   fi
-done
+}
+
+# Tear down backend and frontend (ports 8000 and 3000)
+cleanup() {
+  if [[ "$CLEANUP_DONE" -eq 1 ]]; then
+    return
+  fi
+  CLEANUP_DONE=1
+  echo ""
+  echo "==> Shutting down..."
+  if [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+    kill "$BACKEND_PID" 2>/dev/null || true
+    wait "$BACKEND_PID" 2>/dev/null || true
+  fi
+  kill_port "$BACKEND_PORT"
+  kill_port "$FRONTEND_PORT"
+  echo "==> Cleanup done."
+  exit 0
+}
+
+# Run cleanup on Ctrl+C (SIGINT), SIGTERM, and normal exit
+trap cleanup SIGINT SIGTERM EXIT
+
+# On start: free ports if something is already using them
+echo "==> Checking ports $BACKEND_PORT and $FRONTEND_PORT..."
+kill_port "$BACKEND_PORT"
+kill_port "$FRONTEND_PORT"
+sleep 1
 
 # Install deps if needed
 if [[ ! -d "web/node_modules" ]]; then
@@ -18,19 +53,16 @@ if [[ ! -d "web/node_modules" ]]; then
   "$SCRIPT_DIR/install.sh"
 fi
 
-# Optional: start oracle in background
-ORACLE_PID=""
-if [[ "$WITH_ORACLE" == true ]]; then
-  VENV_DIR="$SCRIPT_DIR/oracle/.venv"
-  if [[ -x "$VENV_DIR/bin/python" ]]; then
-    echo "==> Starting oracle in background..."
-    "$VENV_DIR/bin/python" "$SCRIPT_DIR/oracle/main.py" &
-    ORACLE_PID=$!
-    trap "kill $ORACLE_PID 2>/dev/null || true" EXIT
-  else
-    echo "==> Oracle venv not found. Run ./install.sh first, or start oracle manually."
-  fi
+# Start backend (Flask API) in background
+VENV_DIR="$SCRIPT_DIR/oracle/.venv"
+if [[ -x "$VENV_DIR/bin/flask" ]]; then
+  echo "==> Starting backend at http://localhost:$BACKEND_PORT"
+  (cd "$SCRIPT_DIR/oracle" && FLASK_APP=main "$VENV_DIR/bin/flask" run --port "$BACKEND_PORT") &
+  BACKEND_PID=$!
+else
+  echo "==> Backend venv not found. Run ./install.sh first to enable the API."
 fi
 
-echo "==> Starting web UI at http://localhost:3000"
+echo "==> Starting web UI at http://localhost:$FRONTEND_PORT"
+# Frontend runs in foreground so logs are visible; Ctrl+C will trigger cleanup
 (cd web && npm run dev)
