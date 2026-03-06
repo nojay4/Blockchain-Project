@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDownIcon } from "@radix-ui/react-icons";
 import { Menu, Trophy, LayoutList } from "lucide-react";
 import {
   Accordion,
@@ -32,6 +33,8 @@ export interface MenuItem {
   description?: string;
   icon?: React.ReactNode;
   items?: MenuItem[];
+  /** When true, dropdown is not openable (e.g. Leagues until a sport is selected). */
+  disabled?: boolean;
 }
 
 export interface Navbar1Props {
@@ -138,6 +141,22 @@ function Logo({ logo }: { logo: NonNullable<Navbar1Props["logo"]> }) {
 
 function renderMenuItem(item: MenuItem) {
   if (item.items) {
+    if (item.disabled) {
+      return (
+        <NavigationMenuItem key={item.title} className="text-muted-foreground">
+          <span
+            className="group inline-flex h-9 w-max cursor-not-allowed items-center justify-center rounded-md bg-background px-4 py-2 text-sm font-medium opacity-50"
+            aria-disabled="true"
+          >
+            {item.title}{" "}
+            <ChevronDownIcon
+              className="relative top-[1px] ml-1 h-3 w-3"
+              aria-hidden="true"
+            />
+          </span>
+        </NavigationMenuItem>
+      );
+    }
     return (
       <NavigationMenuItem key={item.title} className="text-muted-foreground">
         <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
@@ -183,6 +202,15 @@ function renderMenuItem(item: MenuItem) {
 
 function renderMobileMenuItem(item: MenuItem) {
   if (item.items) {
+    if (item.disabled) {
+      return (
+        <AccordionItem key={item.title} value={item.title} className="border-b-0">
+          <span className="flex py-4 font-semibold opacity-50" aria-disabled="true">
+            {item.title}
+          </span>
+        </AccordionItem>
+      );
+    }
     return (
       <AccordionItem key={item.title} value={item.title} className="border-b-0">
         <AccordionTrigger className="py-0 font-semibold hover:no-underline">

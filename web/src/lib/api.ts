@@ -1,4 +1,4 @@
-import type { Event, Sport } from "@/types/sports";
+import type { Event, League, Sport } from "@/types/sports";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -10,6 +10,13 @@ export async function getSports(): Promise<Sport[]> {
   if (!res.ok) throw new Error("Failed to load sports");
   const data = await res.json();
   return data as Sport[];
+}
+
+export async function getLeagues(sportSlug: string): Promise<League[]> {
+  const res = await fetch(`${API_BASE}/leagues/${sportSlug}`);
+  if (!res.ok) throw new Error("Failed to load leagues");
+  const data = await res.json();
+  return data as League[];
 }
 
 export async function getEvents(
