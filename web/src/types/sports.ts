@@ -25,6 +25,8 @@ export interface Event {
   id: number;
   home: string;
   away: string;
+  homeId?: number;
+  awayId?: number;
   date: string; // ISO datetime
   sport: Sport;
   league: League;

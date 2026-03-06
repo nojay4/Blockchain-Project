@@ -6,6 +6,7 @@ import { getSports } from "@/lib/api";
 import type { Sport } from "@/types/sports";
 import type { MenuItem } from "@/components/ui/shadcnblocks-com-navbar1";
 import { Navbar1 } from "@/components/ui/shadcnblocks-com-navbar1";
+import { SportIcon } from "@/components/ui/sport-icon";
 
 const defaultLeaguesItems: MenuItem[] = [
   { title: "NFL", description: "National Football League", icon: <LayoutList className="size-5 shrink-0" />, url: "#" },
@@ -19,8 +20,8 @@ function buildMenu(sports: Sport[] | null): MenuItem[] {
       ? [{ title: "Loading…", icon: <Trophy className="size-5 shrink-0" />, url: "#" }]
       : sports.map((s) => ({
           title: s.name,
-          url: `#sport-${s.slug}`,
-          icon: <Trophy className="size-5 shrink-0" />,
+          url: `/sports/${s.slug}`,
+          icon: <SportIcon sportSlug={s.slug} className="size-5 shrink-0" />,
         }));
 
   return [
