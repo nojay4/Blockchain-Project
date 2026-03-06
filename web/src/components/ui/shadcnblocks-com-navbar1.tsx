@@ -142,7 +142,7 @@ function renderMenuItem(item: MenuItem) {
       <NavigationMenuItem key={item.title} className="text-muted-foreground">
         <NavigationMenuTrigger>{item.title}</NavigationMenuTrigger>
         <NavigationMenuContent>
-          <ul className="w-80 p-3">
+          <ul className="w-80 max-h-64 overflow-y-auto p-3">
             {item.items.map((subItem) => (
               <li key={subItem.title}>
                 <Link
@@ -188,7 +188,7 @@ function renderMobileMenuItem(item: MenuItem) {
         <AccordionTrigger className="py-0 font-semibold hover:no-underline">
           {item.title}
         </AccordionTrigger>
-        <AccordionContent className="mt-2">
+        <AccordionContent className="mt-2 max-h-64 overflow-y-auto">
           {item.items.map((subItem) => (
             <Link
               key={subItem.title}
