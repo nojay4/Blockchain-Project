@@ -35,3 +35,10 @@ See the repo README for objectives; add `docs/architecture.md` later if you need
 - **Add "show games" flow** — Backend: endpoint(s) that return games and odds from the sports API. Frontend: fetch and display them so users can pick a game before placing a bet.
 
 Keep changes scoped to this single repo and PoC (no multi-house or mainnet features unless explicitly requested).
+
+## Frontend UI (web/)
+
+- **Component stack:** 21st dev / shadcn-style components live under `web/src/components/ui/`. Use `@/components/ui/...` and `@/lib/utils` (`cn()`). Stack copied elements cleanly so the app feels cohesive—no sloppy overrun, no orphaned variables or dead logic.
+- **Data-driven, minimal logic:** Components should expect data from types (`web/src/types/sports.ts`) and the backend. Prefer displaying that data with clean elements over extra branches, feature flags, or speculative logic. If a type has a field, the UI can show it; avoid checks for “maybe later” behavior.
+- **Single nav bar:** The app header lives in the root layout and includes the theme toggle in the header’s right section so the nav bar is the one place for navigation and theme switch.
+- **Placement:** Put the header in the root layout; keep page content focused (e.g. title, team names, then lists of games/events as data arrives). New 21st dev components should be added under `components/ui` and composed into layout or pages without duplicating layout or theme code.
