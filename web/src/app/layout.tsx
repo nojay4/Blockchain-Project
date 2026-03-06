@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AppNavbar } from "@/components/AppNavbar";
+import { BookmakersProvider } from "@/contexts/BookmakersContext";
 
 export const metadata: Metadata = {
   title: "CU SportsBetting",
@@ -24,7 +25,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
         <AppNavbar />
-        {children}
+        <BookmakersProvider>{children}</BookmakersProvider>
       </body>
     </html>
   );

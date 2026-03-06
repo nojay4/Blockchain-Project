@@ -34,34 +34,29 @@ export interface Event {
   scores: Scores;
 }
 
-// --- Odds (line-level and event-level) ---
+// --- Odds (get_odds / bookmakers response) ---
 
-export interface Odds {
-  home?: number;
-  away?: number;
-  draw?: number;
+/** Single line in a market; fields vary by market/sport (ML, Spread, Totals, Props, etc.). */
+export interface OddsEntry {
+  home?: string;
+  away?: string;
+  draw?: string;
+  hdp?: number;
+  over?: string;
+  under?: string;
+  label?: string;
 }
 
-export interface Line {
+export interface OddsMarket {
   name: string;
-  updated_at: string; // ISO datetime
-  odds: Odds;
+  odds: OddsEntry[];
+  updatedAt: string;
 }
 
-export interface Bookmaker {
-  key: string; // e.g. "bet365"
-  title: string; // e.g. "Bet365"
-  lines: Line[];
-}
+/** Key = bookmaker name, value = array of markets. */
+export type BookmakersOddsMap = Record<string, OddsMarket[]>;
 
-export interface EventOdds {
-  id: number;
-  home: string;
-  away: string;
-  date: string; // ISO datetime
-  status: string;
-  sport: Sport;
-  league: League;
-  bookmaker_urls?: Record<string, string>;
-  bookmakers: Bookmaker[];
+export interface GetOddsResponse {
+  bookmakerIds?: Record<string, string>;
+  bookmakers: BookmakersOddsMap;
 }

@@ -7,7 +7,7 @@ export interface SportEventsListProps {
   events: Event[];
   sportTitle: string;
   leagueTitle?: string;
-  onJoin: (eventId: number) => void;
+  onJoin: (event: Event) => void;
 }
 
 export function SportEventsList({
@@ -34,7 +34,7 @@ export function SportEventsList({
                 ? `${event.league.name} · ${event.sport.name}`
                 : event.league?.name ?? event.sport?.name ?? undefined
             }
-            onJoin={() => onJoin(event.id)}
+            onJoin={() => onJoin(event)}
           />
         ))}
       </div>

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { getEvents } from "@/lib/api";
-import type { Event } from "@/types/sports";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { getEvents, getOdds } from "@/lib/api";
+import type { Event, GetOddsResponse } from "@/types/sports";
 import { SportEventsList } from "@/components/SportEventsList";
+import { EventOddsModal } from "@/components/EventOddsModal";
+import { useBookmakers } from "@/contexts/BookmakersContext";
 
 const EVENTS_PAGE_SIZE = 10;
 
@@ -14,12 +16,16 @@ function slugToTitle(slug: string): string {
 
 export default function SportLeagueEventsPage() {
   const params = useParams();
-  const router = useRouter();
   const slug = params?.slug as string;
   const leagueSlug = params?.leagueSlug as string;
+  const { ensureBookmakers } = useBookmakers();
   const [events, setEvents] = useState<Event[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [oddsResponse, setOddsResponse] = useState<GetOddsResponse | null>(null);
+  const [oddsLoading, setOddsLoading] = useState(false);
 
   useEffect(() => {
     if (!slug || !leagueSlug) return;
@@ -30,6 +36,26 @@ export default function SportLeagueEventsPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load events"))
       .finally(() => setLoading(false));
   }, [slug, leagueSlug]);
+
+  const handleJoin = useCallback(
+    async (event: Event) => {
+      const bookmakers = await ensureBookmakers();
+      if (!bookmakers) return;
+      setSelectedEvent(event);
+      setOddsResponse(null);
+      setModalOpen(true);
+      setOddsLoading(true);
+      try {
+        const data = await getOdds(event.id, bookmakers);
+        setOddsResponse(data);
+      } catch {
+        setOddsResponse(null);
+      } finally {
+        setOddsLoading(false);
+      }
+    },
+    [ensureBookmakers]
+  );
 
   if (error) {
     return (
@@ -56,7 +82,14 @@ export default function SportLeagueEventsPage() {
         events={events}
         sportTitle={sportTitle}
         leagueTitle={leagueTitle}
-        onJoin={(id) => router.push(`/events/${id}`)}
+        onJoin={handleJoin}
+      />
+      <EventOddsModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        event={selectedEvent}
+        odds={oddsResponse}
+        loading={oddsLoading}
       />
     </main>
   );
