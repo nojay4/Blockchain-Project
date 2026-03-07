@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isBetValid } from "@/lib/bet-validation";
 
 export interface EventOddsModalProps {
   open: boolean;
@@ -43,22 +44,30 @@ interface BetButtonProps {
   value: string;
   variant: BetVariant;
   line?: string;
+  disabled?: boolean;
 }
 
-function BetButton({ label, value, variant, line }: BetButtonProps) {
+const disabledStyles = "opacity-40 cursor-not-allowed border-muted-foreground/30 bg-muted/30";
+
+function BetButton({ label, value, variant, line, disabled = false }: BetButtonProps) {
   return (
     <button
       type="button"
+      disabled={disabled}
       className={cn(
         "flex flex-col items-center justify-center rounded-lg border-2 px-3 py-2.5 transition-all duration-150 min-w-0",
-        "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]",
-        "cursor-pointer select-none",
-        variantStyles[variant]
+        disabled
+          ? disabledStyles
+          : [
+              "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]",
+              "cursor-pointer select-none",
+              variantStyles[variant],
+            ]
       )}
     >
       <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
-      {line && <span className="text-xs font-semibold text-foreground/80">{line}</span>}
-      <span className="text-base font-bold font-mono mt-0.5">{value}</span>
+      {line && <span className={cn("text-xs font-semibold", disabled ? "text-muted-foreground/60" : "text-foreground/80")}>{line}</span>}
+      <span className={cn("text-base font-bold font-mono mt-0.5", disabled && "text-muted-foreground")}>{value}</span>
     </button>
   );
 }
@@ -68,9 +77,16 @@ function formatHdp(hdp: number, forAway = false): string {
   return val >= 0 ? `+${val}` : `${val}`;
 }
 
-function OddsLine({ entry }: { entry: OddsEntry }) {
+interface OddsLineProps {
+  entry: OddsEntry;
+  sportSlug?: string;
+  marketName?: string;
+}
+
+function OddsLine({ entry, sportSlug, marketName }: OddsLineProps) {
   const hasHomeAway = entry.home || entry.away;
   const hasOverUnder = entry.over || entry.under;
+  const disabled = !isBetValid(sportSlug, marketName, entry);
 
   // Player prop with label (e.g., "Bam Adebayo (1) (0.5)")
   if (entry.label) {
@@ -110,10 +126,10 @@ function OddsLine({ entry }: { entry: OddsEntry }) {
 
     return (
       <div className="space-y-1.5">
-        <span className="text-xs font-medium text-foreground block">{playerLabel}</span>
+        <span className={cn("text-xs font-medium block", disabled ? "text-muted-foreground/60" : "text-foreground")}>{playerLabel}</span>
         <div className={cn("grid gap-2", buttons.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
           {buttons.map((btn, i) => (
-            <BetButton key={i} {...btn} />
+            <BetButton key={i} {...btn} disabled={disabled} />
           ))}
         </div>
       </div>
@@ -126,10 +142,10 @@ function OddsLine({ entry }: { entry: OddsEntry }) {
     return (
       <div className="grid grid-cols-2 gap-2">
         {entry.over && (
-          <BetButton label="Over" value={entry.over} variant="over" line={lineStr} />
+          <BetButton label="Over" value={entry.over} variant="over" line={lineStr} disabled={disabled} />
         )}
         {entry.under && (
-          <BetButton label="Under" value={entry.under} variant="under" line={lineStr} />
+          <BetButton label="Under" value={entry.under} variant="under" line={lineStr} disabled={disabled} />
         )}
       </div>
     );
@@ -145,10 +161,11 @@ function OddsLine({ entry }: { entry: OddsEntry }) {
             value={entry.home} 
             variant="home" 
             line={formatHdp(entry.hdp)} 
+            disabled={disabled}
           />
         )}
         {entry.draw && (
-          <BetButton label="Draw" value={entry.draw} variant="draw" />
+          <BetButton label="Draw" value={entry.draw} variant="draw" disabled={disabled} />
         )}
         {entry.away && (
           <BetButton 
@@ -156,6 +173,7 @@ function OddsLine({ entry }: { entry: OddsEntry }) {
             value={entry.away} 
             variant="away" 
             line={formatHdp(entry.hdp, true)} 
+            disabled={disabled}
           />
         )}
       </div>
@@ -168,13 +186,13 @@ function OddsLine({ entry }: { entry: OddsEntry }) {
     return (
       <div className={cn("grid gap-2", buttonCount === 3 ? "grid-cols-3" : "grid-cols-2")}>
         {entry.home && (
-          <BetButton label="Home" value={entry.home} variant="home" />
+          <BetButton label="Home" value={entry.home} variant="home" disabled={disabled} />
         )}
         {entry.draw && (
-          <BetButton label="Draw" value={entry.draw} variant="draw" />
+          <BetButton label="Draw" value={entry.draw} variant="draw" disabled={disabled} />
         )}
         {entry.away && (
-          <BetButton label="Away" value={entry.away} variant="away" />
+          <BetButton label="Away" value={entry.away} variant="away" disabled={disabled} />
         )}
       </div>
     );
@@ -251,7 +269,12 @@ export function EventOddsModal({
                         <AccordionContent className="px-3 pb-3">
                           <div className="space-y-3">
                             {market.odds.map((entry, i) => (
-                              <OddsLine key={i} entry={entry} />
+                              <OddsLine 
+                                key={i} 
+                                entry={entry} 
+                                sportSlug={event?.sport?.slug} 
+                                marketName={market.name}
+                              />
                             ))}
                           </div>
                         </AccordionContent>
