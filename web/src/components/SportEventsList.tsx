@@ -2,6 +2,7 @@
 
 import type { Event } from "@/types/sports";
 import { EventCountdownCard } from "@/components/ui/event-countdown-card";
+import { getEventDisplayStatus } from "@/lib/event-status";
 
 export interface SportEventsListProps {
   events: Event[];
@@ -34,6 +35,8 @@ export function SportEventsList({
                 ? `${event.league.name} · ${event.sport.name}`
                 : event.league?.name ?? event.sport?.name ?? undefined
             }
+            eventStatus={getEventDisplayStatus(event)}
+            scores={event.scores}
             onJoin={() => onJoin(event)}
           />
         ))}

@@ -16,6 +16,9 @@ export interface League {
 
 // --- Event ---
 
+/** Event status from API: pending (upcoming), live, or settled. */
+export type EventStatus = "pending" | "live" | "settled";
+
 export interface Scores {
   home: number;
   away: number;
@@ -30,7 +33,7 @@ export interface Event {
   date: string; // ISO datetime
   sport: Sport;
   league: League;
-  status: string;
+  status: EventStatus;
   scores: Scores;
 }
 

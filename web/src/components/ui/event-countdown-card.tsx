@@ -6,6 +6,9 @@ import { buttonVariants } from "@/components/ui/button"
 import { Calendar, Clock } from "lucide-react"
 import { SportIcon } from "@/components/ui/sport-icon"
 import { cn } from "@/lib/utils"
+import type { EventDisplayStatus } from "@/lib/event-status"
+import { formatScore, hasScore } from "@/lib/event-status"
+import type { Scores } from "@/types/sports"
 
 interface EventCountdownCardProps {
   title?: string
@@ -16,6 +19,10 @@ interface EventCountdownCardProps {
   sportSlug?: string
   /** League/sport line (e.g. "USA - NBA · Basketball") */
   subtitle?: string
+  /** Display status: starts_soon, live, or settled. When set, shows badge in top-right and score when live/settled. */
+  eventStatus?: EventDisplayStatus | null
+  /** Scores to show when event is live or settled. */
+  scores?: Scores
   onJoin?: () => void
   enableAnimations?: boolean
   className?: string
@@ -27,6 +34,8 @@ export function EventCountdownCard({
   image,
   sportSlug,
   subtitle,
+  eventStatus = null,
+  scores,
   onJoin,
   enableAnimations = true,
   className,
@@ -208,13 +217,39 @@ export function EventCountdownCard({
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
 
-        {timeLeft > 0 && timeLeft < 86400 && (
+        {/* Top-right status badge: Live (flashing), Settled (blue), or Starts soon */}
+        {eventStatus === "live" && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold"
+            className="absolute top-4 right-4 flex items-center gap-1.5 bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg"
           >
-            Starts Soon!
+            <span
+              className="relative flex h-2.5 w-2.5 shrink-0"
+              aria-hidden
+            >
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-80" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-200 ring-2 ring-white/80" />
+            </span>
+            Live
+          </motion.div>
+        )}
+        {eventStatus === "settled" && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg"
+          >
+            Settled
+          </motion.div>
+        )}
+        {eventStatus === "starts_soon" && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute top-4 right-4 bg-amber-500 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-lg"
+          >
+            Starts soon
           </motion.div>
         )}
       </motion.div>
@@ -244,9 +279,17 @@ export function EventCountdownCard({
               </div>
             ) : null}
           </div>
+
+          {(eventStatus === "live" || eventStatus === "settled") && hasScore(scores) && (
+            <div className="text-center">
+              <span className="font-score text-2xl tabular-nums text-foreground tracking-wider">
+                {formatScore(scores)}
+              </span>
+            </div>
+          )}
         </motion.div>
 
-        {timeLeft > 0 ? (
+        {eventStatus === "live" || eventStatus === "settled" ? null : timeLeft > 0 ? (
           <motion.div
             className="space-y-3"
             variants={shouldAnimate ? childVariants : {}}
