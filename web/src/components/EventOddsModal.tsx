@@ -42,10 +42,10 @@ interface BetButtonProps {
   label: string;
   value: string;
   variant: BetVariant;
-  subLabel?: string;
+  line?: string;
 }
 
-function BetButton({ label, value, variant, subLabel }: BetButtonProps) {
+function BetButton({ label, value, variant, line }: BetButtonProps) {
   return (
     <button
       type="button"
@@ -57,74 +57,130 @@ function BetButton({ label, value, variant, subLabel }: BetButtonProps) {
       )}
     >
       <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</span>
-      {subLabel && <span className="text-[10px] text-muted-foreground/70">{subLabel}</span>}
+      {line && <span className="text-xs font-semibold text-foreground/80">{line}</span>}
       <span className="text-base font-bold font-mono mt-0.5">{value}</span>
     </button>
   );
 }
 
+function formatHdp(hdp: number, forAway = false): string {
+  const val = forAway ? -hdp : hdp;
+  return val >= 0 ? `+${val}` : `${val}`;
+}
+
 function OddsLine({ entry }: { entry: OddsEntry }) {
-  const buttons: { label: string; value: string; variant: BetVariant; subLabel?: string }[] = [];
+  const hasHomeAway = entry.home || entry.away;
+  const hasOverUnder = entry.over || entry.under;
 
-  if (entry.home) {
-    buttons.push({
-      label: "Home",
-      value: entry.home,
-      variant: "home",
-      subLabel: entry.hdp != null ? (entry.hdp >= 0 ? `+${entry.hdp}` : `${entry.hdp}`) : undefined,
-    });
-  }
-
-  if (entry.draw) {
-    buttons.push({ label: "Draw", value: entry.draw, variant: "draw" });
-  }
-
-  if (entry.away) {
-    buttons.push({
-      label: "Away",
-      value: entry.away,
-      variant: "away",
-      subLabel: entry.hdp != null ? (entry.hdp >= 0 ? `${-entry.hdp}` : `+${-entry.hdp}`) : undefined,
-    });
-  }
-
-  if (entry.over) {
-    buttons.push({
-      label: "Over",
-      value: entry.over,
-      variant: "over",
-      subLabel: entry.label,
-    });
-  }
-
-  if (entry.under) {
-    buttons.push({
-      label: "Under",
-      value: entry.under,
-      variant: "under",
-      subLabel: entry.label,
-    });
-  }
-
-  if (buttons.length === 0) {
-    if (entry.label) {
-      return <span className="text-sm text-muted-foreground">{entry.label}</span>;
+  // Player prop with label (e.g., "Bam Adebayo (1) (0.5)")
+  if (entry.label) {
+    const playerLabel = entry.label;
+    const buttons: { label: string; value: string; variant: BetVariant; line?: string }[] = [];
+    
+    if (entry.over) {
+      buttons.push({
+        label: "Over",
+        value: entry.over,
+        variant: "over",
+        line: entry.hdp != null ? `${entry.hdp}` : undefined,
+      });
     }
-    return <span className="text-sm text-muted-foreground">—</span>;
+    if (entry.under) {
+      buttons.push({
+        label: "Under",
+        value: entry.under,
+        variant: "under",
+        line: entry.hdp != null ? `${entry.hdp}` : undefined,
+      });
+    }
+
+    // Handle Yes/No props (like Double Double, Triple Double)
+    if (buttons.length === 0 && (playerLabel.includes("(Yes)") || playerLabel.includes("(No)"))) {
+      const isYes = playerLabel.includes("(Yes)");
+      buttons.push({
+        label: isYes ? "Yes" : "No",
+        value: entry.under || entry.over || "—",
+        variant: isYes ? "over" : "under",
+      });
+    }
+
+    if (buttons.length === 0) {
+      return <span className="text-sm text-muted-foreground">{playerLabel}</span>;
+    }
+
+    return (
+      <div className="space-y-1.5">
+        <span className="text-xs font-medium text-foreground block">{playerLabel}</span>
+        <div className={cn("grid gap-2", buttons.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+          {buttons.map((btn, i) => (
+            <BetButton key={i} {...btn} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
-  return (
-    <div className={cn(
-      "grid gap-2",
-      buttons.length === 1 && "grid-cols-1",
-      buttons.length === 2 && "grid-cols-2",
-      buttons.length >= 3 && "grid-cols-3"
-    )}>
-      {buttons.map((btn, i) => (
-        <BetButton key={i} {...btn} />
-      ))}
-    </div>
-  );
+  // Game totals (Over/Under with hdp as the line)
+  if (hasOverUnder && !hasHomeAway) {
+    const lineStr = entry.hdp != null ? `${entry.hdp}` : undefined;
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        {entry.over && (
+          <BetButton label="Over" value={entry.over} variant="over" line={lineStr} />
+        )}
+        {entry.under && (
+          <BetButton label="Under" value={entry.under} variant="under" line={lineStr} />
+        )}
+      </div>
+    );
+  }
+
+  // Spread (Home/Away with hdp as the spread line)
+  if (hasHomeAway && entry.hdp != null) {
+    return (
+      <div className={cn("grid gap-2", entry.draw ? "grid-cols-3" : "grid-cols-2")}>
+        {entry.home && (
+          <BetButton 
+            label="Home" 
+            value={entry.home} 
+            variant="home" 
+            line={formatHdp(entry.hdp)} 
+          />
+        )}
+        {entry.draw && (
+          <BetButton label="Draw" value={entry.draw} variant="draw" />
+        )}
+        {entry.away && (
+          <BetButton 
+            label="Away" 
+            value={entry.away} 
+            variant="away" 
+            line={formatHdp(entry.hdp, true)} 
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Moneyline (Home/Away/Draw, no hdp)
+  if (hasHomeAway) {
+    const buttonCount = [entry.home, entry.away, entry.draw].filter(Boolean).length;
+    return (
+      <div className={cn("grid gap-2", buttonCount === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        {entry.home && (
+          <BetButton label="Home" value={entry.home} variant="home" />
+        )}
+        {entry.draw && (
+          <BetButton label="Draw" value={entry.draw} variant="draw" />
+        )}
+        {entry.away && (
+          <BetButton label="Away" value={entry.away} variant="away" />
+        )}
+      </div>
+    );
+  }
+
+  return <span className="text-sm text-muted-foreground">—</span>;
 }
 
 export function EventOddsModal({
