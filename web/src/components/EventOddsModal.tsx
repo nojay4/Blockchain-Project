@@ -1,6 +1,7 @@
 "use client";
 
 import type { Event, GetOddsResponse, OddsEntry } from "@/types/sports";
+import { getEventDisplayStatus, formatScore, hasScore } from "@/lib/event-status";
 import {
   Dialog,
   DialogContent,
@@ -212,6 +213,8 @@ export function EventOddsModal({
   const eventMeta = event
     ? [event.league?.name, event.sport?.name].filter(Boolean).join(" · ")
     : "";
+  const displayStatus = event ? getEventDisplayStatus(event) : null;
+  const showScore = event && (displayStatus === "live" || displayStatus === "settled") && hasScore(event.scores);
 
   const bookmakerEntries = odds?.bookmakers
     ? Object.entries(odds.bookmakers)
@@ -220,7 +223,25 @@ export function EventOddsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="relative">
+          {(displayStatus === "live" || displayStatus === "settled") && (
+            <div className="absolute top-0 right-0 flex items-center gap-2">
+              {displayStatus === "live" && (
+                <span className="flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-80" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200 ring-2 ring-white/80" />
+                  </span>
+                  Live
+                </span>
+              )}
+              {displayStatus === "settled" && (
+                <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white">
+                  Settled
+                </span>
+              )}
+            </div>
+          )}
           <DialogTitle>{eventLabel || "Event odds"}</DialogTitle>
           {eventMeta && <DialogDescription>{eventMeta}</DialogDescription>}
           {event?.date && (
@@ -229,6 +250,11 @@ export function EventOddsModal({
                 dateStyle: "medium",
                 timeStyle: "short",
               })}
+            </DialogDescription>
+          )}
+          {showScore && (
+            <DialogDescription className="text-base font-semibold text-foreground">
+              {formatScore(event.scores)}
             </DialogDescription>
           )}
         </DialogHeader>
