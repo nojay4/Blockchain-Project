@@ -1,13 +1,14 @@
 """
 Sports betting API: hardcoded games and odds.
-Also serves as oracle entrypoint (reportResult to contract later).
+Oracle entrypoint: POST /contract/create-game (needs SEPOLIA_RPC_URL or ETH_RPC_URL,
+SPORTS_BETTING_ADDRESS, ORACLE_PRIVATE_KEY in env).
 Run: FLASK_APP=main flask run --port 8000  (or ./run.sh from repo root)
 """
-import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-import json
+
 from odds_client import get_client
+from chain import chain_configured, create_game_on_chain
 
 
 app = Flask(__name__)
@@ -50,6 +51,46 @@ def get_odds(event_id: int, bookmakers: str):
 def get_live_events(sport: str):
     with get_client() as client:
         return jsonify(client.get_live_events(sport))
+
+
+@app.route("/contract/create-game", methods=["POST"])
+def contract_create_game():
+    """
+    Body JSON: { "eventId": number } — registers str(eventId) on-chain via oracle key.
+    """
+    if not chain_configured():
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Chain not configured (SEPOLIA_RPC_URL, SPORTS_BETTING_ADDRESS, ORACLE_PRIVATE_KEY)",
+            }
+        ), 503
+
+    payload = request.get_json(silent=True) or {}
+    event_id = payload.get("eventId")
+    if event_id is None:
+        return jsonify({"ok": False, "error": "Missing eventId"}), 400
+    try:
+        eid = int(event_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "eventId must be an integer"}), 400
+
+    game_id = str(eid)
+    try:
+        tx_hash = create_game_on_chain(game_id)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    return jsonify(
+        {
+            "ok": True,
+            "gameId": game_id,
+            "txHash": tx_hash,
+        }
+    )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)

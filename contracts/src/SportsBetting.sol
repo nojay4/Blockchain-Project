@@ -7,6 +7,8 @@ contract SportsBetting {
     // -------------------------------------------------------------------------
 
     enum Outcome {
+        Pending,
+
         Home,
         Away,
         Draw
@@ -126,7 +128,7 @@ contract SportsBetting {
         require(!games[gameId].exists, "Game already exists");
         games[gameId] = Game({
             status: GameStatus.Open,
-            result: Outcome.Home, // placeholder; ignored until Settled
+            result: Outcome.Pending, // placeholder; ignored until Settled
             homeScore: 0,
             awayScore: 0,
             exists: true

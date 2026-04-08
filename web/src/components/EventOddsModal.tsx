@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import type { Event, GetOddsResponse, OddsEntry } from "@/types/sports";
 import { getEventDisplayStatus, formatScore, hasScore } from "@/lib/event-status";
+import { createGameOnChain } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -209,6 +211,42 @@ export function EventOddsModal({
   odds,
   loading = false,
 }: EventOddsModalProps) {
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createTxHash, setCreateTxHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setCreating(false);
+      setCreateError(null);
+      setCreateTxHash(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    setCreateError(null);
+    setCreateTxHash(null);
+  }, [event?.id]);
+
+  const handleCreateOnChain = useCallback(async () => {
+    if (!event) return;
+    setCreating(true);
+    setCreateError(null);
+    setCreateTxHash(null);
+    try {
+      const r = await createGameOnChain(event.id);
+      if (!r.ok || !r.txHash) {
+        setCreateError(r.error ?? "Failed to create game on chain");
+      } else {
+        setCreateTxHash(r.txHash);
+      }
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setCreating(false);
+    }
+  }, [event]);
+
   const eventLabel = event ? `${event.away} @ ${event.home}` : "";
   const eventMeta = event
     ? [event.league?.name, event.sport?.name].filter(Boolean).join(" · ")
@@ -317,10 +355,40 @@ export function EventOddsModal({
           <p className="text-muted-foreground text-sm py-4">No odds available.</p>
         )}
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Close</Button>
-          </DialogClose>
+        <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm order-2 sm:order-1">
+            {createError && (
+              <p className="text-destructive">{createError}</p>
+            )}
+            {createTxHash && (
+              <>
+                <p className="text-muted-foreground">
+                  On-chain game id: <span className="font-mono text-foreground">{String(event?.id)}</span>
+                </p>
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${createTxHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary font-medium underline underline-offset-2 break-all hover:text-primary/90"
+                >
+                  View transaction on Sepolia Etherscan
+                </a>
+              </>
+            )}
+          </div>
+          <div className="flex w-full flex-wrap justify-end gap-2 order-1 sm:order-2 sm:w-auto">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!event || loading || creating}
+              onClick={handleCreateOnChain}
+            >
+              {creating ? "Creating…" : "Create game on chain"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="outline">Close</Button>
+            </DialogClose>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

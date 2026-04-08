@@ -49,3 +49,29 @@ export async function getOdds(
   const data = await res.json();
   return data as GetOddsResponse;
 }
+
+export interface CreateGameOnChainResponse {
+  ok: boolean;
+  gameId?: string;
+  txHash?: string;
+  error?: string;
+}
+
+/** Registers `String(eventId)` on-chain via oracle (Flask). */
+export async function createGameOnChain(
+  eventId: number
+): Promise<CreateGameOnChainResponse> {
+  const res = await fetch(`${API_BASE}/contract/create-game`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId }),
+  });
+  const data = (await res.json()) as CreateGameOnChainResponse;
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: data.error ?? `Request failed (${res.status})`,
+    };
+  }
+  return data;
+}
