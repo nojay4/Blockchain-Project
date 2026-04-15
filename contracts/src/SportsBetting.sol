@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-contract SportsBetting {
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
+contract SportsBetting is EIP712 {
     // -------------------------------------------------------------------------
     // Enums
     // -------------------------------------------------------------------------
@@ -50,6 +53,14 @@ contract SportsBetting {
     }
 
     // -------------------------------------------------------------------------
+    // Constants
+    // -------------------------------------------------------------------------
+
+    bytes32 private constant BET_QUOTE_TYPEHASH = keccak256(
+        "BetQuote(address bettor,string gameId,uint8 betType,uint8 outcome,int256 line,uint256 odds,uint256 nonce,uint256 expiry)"
+    );
+
+    // -------------------------------------------------------------------------
     // State
     // -------------------------------------------------------------------------
 
@@ -59,6 +70,9 @@ contract SportsBetting {
     mapping(string => Game) public games; // gameId → Game
     mapping(uint256 => Bet) public bets; // betId → Bet
     uint256 public nextBetId;
+
+    /// @notice Per-bettor nonce for EIP-712 quotes (prevents replay).
+    mapping(address => uint256) public bettorNonces;
 
     // -------------------------------------------------------------------------
     // Events
@@ -98,7 +112,7 @@ contract SportsBetting {
     // Constructor
     // -------------------------------------------------------------------------
 
-    constructor(address _oracle) {
+    constructor(address _oracle) EIP712("SportsBetting", "1") {
         owner = msg.sender;
         oracle = _oracle;
     }
@@ -124,14 +138,7 @@ contract SportsBetting {
 
     function createGame(string calldata gameId) external onlyOracleOrOwner {
         require(!games[gameId].exists, "Game already exists");
-        games[gameId] = Game({
-            status: GameStatus.Open,
-            result: Outcome.Home, // placeholder; ignored until Settled
-            homeScore: 0,
-            awayScore: 0,
-            exists: true
-        });
-        emit GameCreated(gameId);
+        _initGame(gameId);
     }
 
     /// @notice Report the final result of a game and settle it.
@@ -159,36 +166,39 @@ contract SportsBetting {
     // User functions
     // -------------------------------------------------------------------------
 
-    /// @notice Place a bet on a game.
-    /// @param gameId   Game identifier.
-    /// @param betType  Moneyline, Spread, or Total.
-    /// @param outcome  Home/Away/Draw (meaning depends on betType — see Bet struct docs).
-    /// @param line     Spread or total line × 10; pass 0 for Moneyline.
-    /// @param odds     Decimal odds × 100 (e.g. 1.91x → 191). Locked in at time of bet.
-    function placeBet(string calldata gameId, BetType betType, Outcome outcome, int256 line, uint256 odds)
-        external
-        payable
-    {
+    /// @notice Place a bet using an oracle EIP-712 signature over the quote. Creates the game if missing.
+    /// @param odds    Decimal odds × 100 (must match signed quote).
+    /// @param nonce   Must equal `bettorNonces[msg.sender]` before the bet.
+    /// @param expiry  Unix timestamp; quote must still be valid (`block.timestamp <= expiry`).
+    function placeBet(
+        string calldata gameId,
+        BetType betType,
+        Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry,
+        bytes calldata signature
+    ) external payable {
         require(msg.value > 0, "Bet amount must be > 0");
         require(odds >= 100, "Odds must be >= 1.00x (100)");
+        require(block.timestamp <= expiry, "Quote expired");
+        require(nonce == bettorNonces[msg.sender], "Invalid nonce");
+
+        _verifyOracleQuoteSignature(msg.sender, gameId, betType, outcome, line, odds, nonce, expiry, signature);
 
         Game storage game = games[gameId];
-        require(game.exists, "Game does not exist");
-        require(game.status == GameStatus.Open, "Game is not open for betting");
+        if (!game.exists) {
+            _initGame(gameId);
+        } else {
+            require(game.status == GameStatus.Open, "Game already settled");
+        }
 
-        uint256 betId = nextBetId++;
-        bets[betId] = Bet({
-            bettor: msg.sender,
-            gameId: gameId,
-            betType: betType,
-            outcome: outcome,
-            line: line,
-            amount: msg.value,
-            odds: odds,
-            claimed: false
-        });
+        unchecked {
+            bettorNonces[msg.sender]++;
+        }
 
-        emit BetPlaced(betId, msg.sender, gameId, betType, outcome, line, msg.value, odds);
+        _appendBet(gameId, betType, outcome, line, odds);
     }
 
     /// @notice Claim winnings for a settled bet. Uses CEI pattern to prevent reentrancy.
@@ -248,6 +258,75 @@ contract SportsBetting {
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
+
+    function _initGame(string calldata gameId) private {
+        games[gameId] = Game({
+            status: GameStatus.Open,
+            result: Outcome.Home, // placeholder; ignored until Settled
+            homeScore: 0,
+            awayScore: 0,
+            exists: true
+        });
+        emit GameCreated(gameId);
+    }
+
+    function _verifyOracleQuoteSignature(
+        address bettor,
+        string calldata gameId,
+        BetType betType,
+        Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry,
+        bytes calldata signature
+    ) private view {
+        bytes32 digest =
+            _hashTypedDataV4(_structHash(bettor, gameId, betType, outcome, line, odds, nonce, expiry));
+        require(ECDSA.recover(digest, signature) == oracle, "Invalid signature");
+    }
+
+    function _appendBet(string calldata gameId, BetType betType, Outcome outcome, int256 line, uint256 odds)
+        private
+    {
+        uint256 betId = nextBetId++;
+        bets[betId] = Bet({
+            bettor: msg.sender,
+            gameId: gameId,
+            betType: betType,
+            outcome: outcome,
+            line: line,
+            amount: msg.value,
+            odds: odds,
+            claimed: false
+        });
+        emit BetPlaced(betId, msg.sender, gameId, betType, outcome, line, msg.value, odds);
+    }
+
+    function _structHash(
+        address bettor,
+        string calldata gameId,
+        BetType betType,
+        Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry
+    ) private pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                BET_QUOTE_TYPEHASH,
+                bettor,
+                keccak256(bytes(gameId)),
+                uint8(betType),
+                uint8(outcome),
+                line,
+                odds,
+                nonce,
+                expiry
+            )
+        );
+    }
 
     /// @dev Evaluate whether a bet won or pushed against the settled game result.
     ///      All score/line comparisons are done in the ×10 integer space.

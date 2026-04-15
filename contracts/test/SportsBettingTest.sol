@@ -2,25 +2,134 @@
 pragma solidity ^0.8.13;
 
 import {Test} from "forge-std/Test.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SportsBetting} from "../src/SportsBetting.sol";
 
 contract SportsBettingTest is Test {
+    bytes32 private constant EIP712_DOMAIN_TYPEHASH = keccak256(
+        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+    );
+    bytes32 private constant BET_QUOTE_TYPEHASH = keccak256(
+        "BetQuote(address bettor,string gameId,uint8 betType,uint8 outcome,int256 line,uint256 odds,uint256 nonce,uint256 expiry)"
+    );
+    receive() external payable {}
+
     SportsBetting public betting;
 
-    address owner = address(this);
-    address oracle = address(0xBEEF);
-    address alice = address(0xA11CE);
-    address bob = address(0xB0B);
+    /// @dev Anvil default account #0 — must match `oracle` passed to constructor.
+    uint256 internal constant ORACLE_PK =
+        0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+    /// @dev Anvil default account #1 — used as `alice` so we can `vm.sign` wrong-signer cases.
+    uint256 internal constant ALICE_PK =
+        0x59c6995e998f97a5a0044966f0945389dc9e86dae88f7a843b79eacd0a40aedf;
+
+    address internal owner;
+    address internal oracle;
+    address internal alice;
+    address internal bob;
 
     string constant GAME = "game-001";
 
     function setUp() public {
+        owner = address(this);
+        oracle = vm.addr(ORACLE_PK);
+        alice = vm.addr(ALICE_PK);
+        (bob,) = makeAddrAndKey("bob");
+
         betting = new SportsBetting(oracle);
-        // Fund the contract so it can pay out winnings
         vm.deal(address(betting), 100 ether);
-        // Give users some ETH
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
+    }
+
+    function _expiry() internal view returns (uint256) {
+        return block.timestamp + 1 days;
+    }
+
+    /// @dev Must match OpenZeppelin EIP712("SportsBetting", "1") on the deployed contract.
+    function _eip712DomainSeparator(SportsBetting target) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                keccak256(bytes("SportsBetting")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(target)
+            )
+        );
+    }
+
+    /// @dev Must match SportsBetting._structHash.
+    function _betQuoteStructHash(
+        address bettor,
+        string memory gameId,
+        SportsBetting.BetType betType,
+        SportsBetting.Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry
+    ) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                BET_QUOTE_TYPEHASH,
+                bettor,
+                keccak256(bytes(gameId)),
+                uint8(betType),
+                uint8(outcome),
+                line,
+                odds,
+                nonce,
+                expiry
+            )
+        );
+    }
+
+    function _typedBetDigest(
+        SportsBetting target,
+        address bettor,
+        string memory gameId,
+        SportsBetting.BetType betType,
+        SportsBetting.Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry
+    ) internal view returns (bytes32) {
+        bytes32 structHash =
+            _betQuoteStructHash(bettor, gameId, betType, outcome, line, odds, nonce, expiry);
+        return ECDSA.toTypedDataHash(_eip712DomainSeparator(target), structHash);
+    }
+
+    function _oracleSig(
+        address bettor,
+        string memory gameId,
+        SportsBetting.BetType betType,
+        SportsBetting.Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry
+    ) internal view returns (bytes memory) {
+        bytes32 digest =
+            _typedBetDigest(betting, bettor, gameId, betType, outcome, line, odds, nonce, expiry);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ORACLE_PK, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _aliceWrongSig(
+        address bettor,
+        string memory gameId,
+        SportsBetting.BetType betType,
+        SportsBetting.Outcome outcome,
+        int256 line,
+        uint256 odds,
+        uint256 nonce,
+        uint256 expiry
+    ) internal view returns (bytes memory) {
+        bytes32 digest = _typedBetDigest(betting, bettor, gameId, betType, outcome, line, odds, nonce, expiry);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ALICE_PK, digest);
+        return abi.encodePacked(r, s, v);
     }
 
     // -------------------------------------------------------------------------
@@ -96,34 +205,58 @@ contract SportsBettingTest is Test {
 
     function test_PlaceBet_Moneyline() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
 
         SportsBetting.Bet memory b = betting.getBet(0);
         assertEq(b.bettor, alice);
         assertEq(b.amount, 1 ether);
         assertEq(b.odds, 200);
         assertFalse(b.claimed);
+        assertEq(betting.bettorNonces(alice), 1);
+    }
+
+    function test_PlaceBet_AutoCreatesGame() public {
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
+        vm.prank(alice);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
+
+        assertTrue(betting.getGame(GAME).exists);
+        assertEq(uint256(betting.getGame(GAME).status), uint256(SportsBetting.GameStatus.Open));
+        assertEq(betting.getBet(0).bettor, alice);
     }
 
     function test_PlaceBet_Reverts_ZeroValue() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
         vm.expectRevert("Bet amount must be > 0");
-        betting.placeBet{value: 0}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 0}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
     }
 
     function test_PlaceBet_Reverts_OddsTooLow() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 99, 0, _expiry()
+        );
         vm.prank(alice);
         vm.expectRevert("Odds must be >= 1.00x (100)");
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 99);
-    }
-
-    function test_PlaceBet_Reverts_NoGame() public {
-        vm.prank(alice);
-        vm.expectRevert("Game does not exist");
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 99, 0, _expiry(), sig
+        );
     }
 
     function test_PlaceBet_Reverts_GameSettled() public {
@@ -131,9 +264,69 @@ contract SportsBettingTest is Test {
         vm.prank(oracle);
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 900);
 
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        vm.expectRevert("Game is not open for betting");
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        vm.expectRevert("Game already settled");
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
+    }
+
+    function test_PlaceBet_Reverts_InvalidNonce() public {
+        betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 1, _expiry()
+        );
+        vm.prank(alice);
+        vm.expectRevert("Invalid nonce");
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 1, _expiry(), sig
+        );
+    }
+
+    function test_PlaceBet_Reverts_QuoteExpired() public {
+        betting.createGame(GAME);
+        uint256 exp = block.timestamp + 100;
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, exp
+        );
+        vm.warp(block.timestamp + 200);
+        vm.prank(alice);
+        vm.expectRevert("Quote expired");
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, exp, sig
+        );
+    }
+
+    function test_PlaceBet_Reverts_InvalidSignature() public {
+        betting.createGame(GAME);
+        bytes memory sig = _aliceWrongSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
+        vm.prank(alice);
+        vm.expectRevert("Invalid signature");
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
+    }
+
+    function test_PlaceBet_Reverts_ReplayNonce() public {
+        betting.createGame(GAME);
+        bytes memory sig0 = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
+        vm.prank(alice);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig0
+        );
+
+        vm.prank(alice);
+        vm.expectRevert("Invalid nonce");
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig0
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -142,9 +335,13 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Moneyline_Win() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        // Bet 1 ETH on Home at 2.00x → payout = 2 ETH
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 900);
@@ -159,8 +356,13 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Moneyline_Loss() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
         betting.reportResult(GAME, SportsBetting.Outcome.Away, 900, 1100);
@@ -172,8 +374,13 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Reverts_DoubleClaim() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
         vm.prank(oracle);
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 900);
 
@@ -186,8 +393,13 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Reverts_NotYourBet() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
         vm.prank(oracle);
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 900);
 
@@ -198,8 +410,13 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Reverts_NotSettled() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry()
+        );
         vm.prank(alice);
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Moneyline, SportsBetting.Outcome.Home, 0, 200, 0, _expiry(), sig
+        );
 
         vm.prank(alice);
         vm.expectRevert("Game not yet settled");
@@ -212,12 +429,15 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Spread_HomeCoverWin() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Home -3.5 → line = -35; home must win by > 3.5
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // Home wins 110-100 → margin = 100 (×10), adjusted = 100 + (-35) = 65 > 0 → home covers
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 1000);
 
         uint256 balanceBefore = alice.balance;
@@ -228,12 +448,15 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Spread_HomeCoverLoss() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Home -3.5 → line = -35; home wins by only 2 → does not cover
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -35, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // Home 102 - Away 100 → margin = 20 (×10), adjusted = 20 + (-35) = -15 < 0 → home does NOT cover
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1020, 1000);
 
         vm.prank(alice);
@@ -243,18 +466,20 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Spread_Push() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -30, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Home -3.0 → line = -30; home wins by exactly 3 → push
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -30, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Spread, SportsBetting.Outcome.Home, -30, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // Home 103 - Away 100 → margin = 30 (×10), adjusted = 30 + (-30) = 0 → push
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1030, 1000);
 
         uint256 balanceBefore = alice.balance;
         vm.prank(alice);
         betting.claimWinnings(0);
-        // On push, refund the original stake
         assertEq(alice.balance - balanceBefore, 1 ether);
     }
 
@@ -264,12 +489,15 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Total_OverWin() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2205, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Over 220.5 → line = 2205
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2205, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2205, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // 115 + 110 = 225 > 220.5 → over wins
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1150, 1100);
 
         uint256 balanceBefore = alice.balance;
@@ -280,12 +508,15 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Total_UnderWin() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Away, 2205, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Under 220.5 → line = 2205; outcome = Away (Under)
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Away, 2205, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Away, 2205, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // 100 + 105 = 205 < 220.5 → under wins
         betting.reportResult(GAME, SportsBetting.Outcome.Away, 1000, 1050);
 
         uint256 balanceBefore = alice.balance;
@@ -296,12 +527,15 @@ contract SportsBettingTest is Test {
 
     function test_ClaimWinnings_Total_Push() public {
         betting.createGame(GAME);
+        bytes memory sig = _oracleSig(
+            alice, GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2200, 191, 0, _expiry()
+        );
         vm.prank(alice);
-        // Over 220.0 → line = 2200
-        betting.placeBet{value: 1 ether}(GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2200, 191);
+        betting.placeBet{value: 1 ether}(
+            GAME, SportsBetting.BetType.Total, SportsBetting.Outcome.Home, 2200, 191, 0, _expiry(), sig
+        );
 
         vm.prank(oracle);
-        // 110 + 110 = 220 exactly → push
         betting.reportResult(GAME, SportsBetting.Outcome.Home, 1100, 1100);
 
         uint256 balanceBefore = alice.balance;
