@@ -1,4 +1,5 @@
 import type { Event, GetOddsResponse, League, Sport } from "@/types/sports";
+import type { BetQuoteRequest, BetQuoteResponse } from "@/types/contract";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -48,4 +49,25 @@ export async function getOdds(
   if (!res.ok) throw new Error("Failed to load odds");
   const data = await res.json();
   return data as GetOddsResponse;
+}
+
+export async function postBetQuote(
+  body: BetQuoteRequest
+): Promise<BetQuoteResponse> {
+  const res = await fetch(`${API_BASE}/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let message = "Quote failed";
+    try {
+      const err = (await res.json()) as { error?: string };
+      if (err?.error) message = err.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<BetQuoteResponse>;
 }

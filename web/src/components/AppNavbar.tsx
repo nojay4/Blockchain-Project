@@ -8,6 +8,7 @@ import type { Sport, League } from "@/types/sports";
 import { getDefaultLeagueForSport } from "@/lib/sports-defaults";
 import type { MenuItem } from "@/components/ui/shadcnblocks-com-navbar1";
 import { Navbar1 } from "@/components/ui/shadcnblocks-com-navbar1";
+import { NavbarWallet } from "@/components/NavbarWallet";
 import { SportIcon } from "@/components/ui/sport-icon";
 
 function getCurrentSportFromPath(pathname: string | null): string | null {
@@ -93,5 +94,5 @@ export function AppNavbar() {
     leaguesMenuItem,
   ];
 
-  return <Navbar1 menu={menu} />;
+  return <Navbar1 menu={menu} walletSlot={<NavbarWallet />} />;
 }
