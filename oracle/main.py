@@ -74,5 +74,14 @@ def quote():
     return jsonify(out)
 
 
+@app.route("/list-bets", methods=["GET"])
+def list_bets():
+    from list_bets import get_raw_logs, make_contract, decoded_bets, get_tickets
+    logs = get_raw_logs()
+    c = make_contract()
+    bets = decoded_bets(logs, c)
+    tickets = get_tickets(bets)
+    return jsonify(tickets)
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
