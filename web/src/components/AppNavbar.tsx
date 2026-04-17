@@ -90,6 +90,7 @@ export function AppNavbar() {
 
   const menu: MenuItem[] = [
     { title: "Home", url: "/" },
+    { title: "My bets", url: "/mybets" },
     { title: "Sports", url: "#", items: sportsItems },
     leaguesMenuItem,
   ];

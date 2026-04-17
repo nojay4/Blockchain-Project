@@ -1,5 +1,13 @@
-import type { Event, GetOddsResponse, League, Sport } from "@/types/sports";
+import type {
+  Event,
+  GetOddsResponse,
+  League,
+  ListBetsTicketRaw,
+  ListBetsTicketRow,
+  Sport,
+} from "@/types/sports";
 import type { BetQuoteRequest, BetQuoteResponse } from "@/types/contract";
+import { ticketEventToEvent } from "@/lib/ticket-to-event";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -70,4 +78,17 @@ export async function postBetQuote(
     throw new Error(message);
   }
   return res.json() as Promise<BetQuoteResponse>;
+}
+
+export async function getListBets(): Promise<ListBetsTicketRow[]> {
+  const res = await fetch(`${API_BASE}/list-bets`);
+  if (!res.ok) throw new Error("Failed to load bets");
+  const data = (await res.json()) as Record<string, ListBetsTicketRaw>;
+  const rows: ListBetsTicketRow[] = Object.entries(data).map(([betId, ticket]) => ({
+    betId,
+    bet: ticket.bet,
+    event: ticketEventToEvent(ticket.event),
+  }));
+  rows.sort((a, b) => Number(b.betId) - Number(a.betId));
+  return rows;
 }

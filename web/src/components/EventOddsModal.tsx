@@ -33,7 +33,23 @@ import {
   useWriteContract,
 } from "wagmi";
 import { sepolia } from "wagmi/chains";
-import { parseEther } from "viem";
+import { formatEther, parseEther } from "viem";
+import {
+  betTypeLabel,
+  decimalOddsFromChain,
+  formatLineForDisplay,
+  outcomeLabel as placedOutcomeLabel,
+} from "@/lib/placed-bet-labels";
+
+export interface EventOddsModalTicketBet {
+  betId: string;
+  bettor: string;
+  betType: number;
+  outcome: number;
+  line: number;
+  amountWei: bigint;
+  oddsTimes100: bigint;
+}
 
 export interface EventOddsModalProps {
   open: boolean;
@@ -41,6 +57,9 @@ export interface EventOddsModalProps {
   event: Event | null;
   odds: GetOddsResponse | null;
   loading?: boolean;
+  /** Read-only bet details (My Bets); omits odds book and stake flow. */
+  mode?: "placeBet" | "ticket";
+  ticketBet?: EventOddsModalTicketBet | null;
 }
 
 type BetVariant = "home" | "away" | "draw" | "over" | "under" | "neutral";
@@ -307,13 +326,21 @@ function OddsLine({
   return <span className="text-sm text-muted-foreground">—</span>;
 }
 
+function shortAddress(addr: string): string {
+  if (!addr || addr.length < 10) return addr;
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
 export function EventOddsModal({
   open,
   onOpenChange,
   event,
   odds,
   loading = false,
+  mode = "placeBet",
+  ticketBet = null,
 }: EventOddsModalProps) {
+  const isTicketMode = mode === "ticket";
   const { address } = useAccount();
   const chainId = useChainId();
   const { connectAsync, connectors, isPending: isConnectingWallet } = useConnect();
@@ -357,6 +384,7 @@ export function EventOddsModal({
   );
 
   useEffect(() => {
+    if (isTicketMode) return;
     if (!open || modalPhase !== "stake" || pick === null || !event || !bookmakersCsv) return;
     if (!address) {
       setQuote(null);
@@ -388,7 +416,7 @@ export function EventOddsModal({
     return () => {
       cancelled = true;
     };
-  }, [open, modalPhase, pick, bookmakersCsv, address, event?.id]);
+  }, [open, modalPhase, pick, bookmakersCsv, address, event?.id, isTicketMode]);
 
   const backToOdds = () => {
     setModalPhase("odds");
@@ -476,6 +504,11 @@ export function EventOddsModal({
     ? Object.entries(odds.bookmakers)
     : [];
 
+  const ticketLineShown =
+    isTicketMode && ticketBet
+      ? formatLineForDisplay(ticketBet.betType, ticketBet.line)
+      : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
@@ -515,7 +548,32 @@ export function EventOddsModal({
           )}
         </DialogHeader>
 
-        {modalPhase === "stake" && event && (
+        {isTicketMode && ticketBet && event && (
+          <div className="space-y-3 py-2 text-sm">
+            <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2">
+              <dt className="text-muted-foreground">Bet ID</dt>
+              <dd className="font-mono font-medium">{ticketBet.betId}</dd>
+              <dt className="text-muted-foreground">Bettor</dt>
+              <dd className="font-mono text-xs">{shortAddress(ticketBet.bettor)}</dd>
+              <dt className="text-muted-foreground">Type</dt>
+              <dd>{betTypeLabel(ticketBet.betType)}</dd>
+              <dt className="text-muted-foreground">Pick</dt>
+              <dd>{placedOutcomeLabel(ticketBet.betType, ticketBet.outcome)}</dd>
+              {ticketLineShown !== null && (
+                <>
+                  <dt className="text-muted-foreground">Line</dt>
+                  <dd className="font-mono">{ticketLineShown}</dd>
+                </>
+              )}
+              <dt className="text-muted-foreground">Odds</dt>
+              <dd className="font-mono font-semibold">{decimalOddsFromChain(ticketBet.oddsTimes100)}</dd>
+              <dt className="text-muted-foreground">Stake</dt>
+              <dd className="font-mono font-semibold">{formatEther(ticketBet.amountWei)} ETH</dd>
+            </dl>
+          </div>
+        )}
+
+        {!isTicketMode && modalPhase === "stake" && event && (
           <div className="space-y-4 py-2">
             <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8 px-2" onClick={backToOdds}>
               ← Back to odds
@@ -581,7 +639,7 @@ export function EventOddsModal({
           </div>
         )}
 
-        {modalPhase === "odds" && (
+        {!isTicketMode && modalPhase === "odds" && (
           <>
             {loading && (
               <p className="text-muted-foreground text-sm py-4">Loading odds…</p>
