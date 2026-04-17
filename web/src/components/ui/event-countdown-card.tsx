@@ -24,6 +24,8 @@ interface EventCountdownCardProps {
   /** Scores to show when event is live or settled. */
   scores?: Scores
   onJoin?: () => void
+  /** Primary action label (default: Place bet). */
+  ctaLabel?: string
   enableAnimations?: boolean
   className?: string
 }
@@ -37,6 +39,7 @@ export function EventCountdownCard({
   eventStatus = null,
   scores,
   onJoin,
+  ctaLabel = "Place bet",
   enableAnimations = true,
   className,
 }: EventCountdownCardProps) {
@@ -347,7 +350,7 @@ export function EventCountdownCard({
             "focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
           )}
         >
-          Place bet
+          {ctaLabel}
         </motion.button>
       </div>
     </motion.div>

@@ -331,6 +331,33 @@ function shortAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
+function ticketBarcodeHeights(seed: string): number[] {
+  const s = seed.length ? seed : "0";
+  const out: number[] = [];
+  for (let i = 0; i < 46; i++) {
+    out.push(8 + ((s.charCodeAt(i % s.length) + i * 7) % 22));
+  }
+  return out;
+}
+
+function TicketBarcode({ seed }: { seed: string }) {
+  const heights = ticketBarcodeHeights(seed);
+  return (
+    <div
+      className="flex h-[54px] items-end justify-center gap-[1px] px-4 opacity-90"
+      aria-hidden
+    >
+      {heights.map((h, i) => (
+        <div
+          key={i}
+          className="shrink-0 rounded-[0.5px] bg-amber-950 dark:bg-amber-100/85"
+          style={{ width: 1 + (i % 4 === 0 ? 1 : 0), height: h }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function EventOddsModal({
   open,
   onOpenChange,
@@ -509,69 +536,182 @@ export function EventOddsModal({
       ? formatLineForDisplay(ticketBet.betType, ticketBet.line)
       : null;
 
+  const showTicketChrome = Boolean(isTicketMode && ticketBet && event);
+
+  const dialogHeader = (
+    <DialogHeader
+      className={cn(
+        "relative",
+        showTicketChrome && "text-amber-950 dark:text-amber-50"
+      )}
+    >
+      {(displayStatus === "live" || displayStatus === "settled") && (
+        <div className="absolute top-0 right-0 flex items-center gap-2">
+          {displayStatus === "live" && (
+            <span className="flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-80" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200 ring-2 ring-white/80" />
+              </span>
+              Live
+            </span>
+          )}
+          {displayStatus === "settled" && (
+            <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white">
+              Settled
+            </span>
+          )}
+        </div>
+      )}
+      <DialogTitle
+        className={cn(showTicketChrome && "text-xl font-bold tracking-tight text-amber-950 dark:text-amber-50")}
+      >
+        {eventLabel || "Event odds"}
+      </DialogTitle>
+      {eventMeta && (
+        <DialogDescription
+          className={cn(showTicketChrome && "text-amber-900/75 dark:text-amber-200/80")}
+        >
+          {eventMeta}
+        </DialogDescription>
+      )}
+      {event?.date && (
+        <DialogDescription
+          className={cn(showTicketChrome && "text-amber-900/70 dark:text-amber-200/75")}
+        >
+          {new Date(event.date).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+        </DialogDescription>
+      )}
+      {showScore && (
+        <DialogDescription
+          className={cn(
+            "text-base font-semibold",
+            showTicketChrome ? "text-amber-950 dark:text-amber-50" : "text-foreground"
+          )}
+        >
+          {formatScore(event.scores)}
+        </DialogDescription>
+      )}
+    </DialogHeader>
+  );
+
+  const ticketBody =
+    showTicketChrome && ticketBet ? (
+      <div className="rounded-md border border-amber-900/20 bg-white/55 px-3 py-3 text-sm shadow-inner dark:border-amber-700/30 dark:bg-black/30">
+        <dl className="grid grid-cols-[minmax(0,6.5rem)_1fr] gap-x-2 gap-y-2.5 border-b border-dashed border-amber-900/15 pb-3 dark:border-amber-700/25">
+          <dt className="font-medium uppercase tracking-wide text-amber-800/80 text-[11px] dark:text-amber-300/85">
+            Bet ID
+          </dt>
+          <dd className="font-mono text-sm font-semibold text-amber-950 dark:text-amber-50">{ticketBet.betId}</dd>
+          <dt className="font-medium uppercase tracking-wide text-amber-800/80 text-[11px] dark:text-amber-300/85">
+            Bettor
+          </dt>
+          <dd className="font-mono text-xs text-amber-950 dark:text-amber-100">{shortAddress(ticketBet.bettor)}</dd>
+          <dt className="font-medium uppercase tracking-wide text-amber-800/80 text-[11px] dark:text-amber-300/85">
+            Type
+          </dt>
+          <dd className="text-amber-950 dark:text-amber-50">{betTypeLabel(ticketBet.betType)}</dd>
+          <dt className="font-medium uppercase tracking-wide text-amber-800/80 text-[11px] dark:text-amber-300/85">
+            Pick
+          </dt>
+          <dd className="text-amber-950 dark:text-amber-50">{placedOutcomeLabel(ticketBet.betType, ticketBet.outcome)}</dd>
+          {ticketLineShown !== null && (
+            <>
+              <dt className="font-medium uppercase tracking-wide text-amber-800/80 text-[11px] dark:text-amber-300/85">
+                Line
+              </dt>
+              <dd className="font-mono text-amber-950 dark:text-amber-50">{ticketLineShown}</dd>
+            </>
+          )}
+        </dl>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800/75 dark:text-amber-400/80">
+              Odds
+            </p>
+            <p className="font-mono text-lg font-bold tabular-nums text-amber-950 dark:text-amber-50">
+              {decimalOddsFromChain(ticketBet.oddsTimes100)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800/75 dark:text-amber-400/80">
+              Stake
+            </p>
+            <p className="font-mono text-lg font-bold tabular-nums text-amber-950 dark:text-amber-50">
+              {formatEther(ticketBet.amountWei)} <span className="text-sm font-semibold">ETH</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader className="relative">
-          {(displayStatus === "live" || displayStatus === "settled") && (
-            <div className="absolute top-0 right-0 flex items-center gap-2">
-              {displayStatus === "live" && (
-                <span className="flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white">
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-300 opacity-80" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-200 ring-2 ring-white/80" />
-                  </span>
-                  Live
-                </span>
-              )}
-              {displayStatus === "settled" && (
-                <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-bold text-white">
-                  Settled
-                </span>
-              )}
-            </div>
-          )}
-          <DialogTitle>{eventLabel || "Event odds"}</DialogTitle>
-          {eventMeta && <DialogDescription>{eventMeta}</DialogDescription>}
-          {event?.date && (
-            <DialogDescription>
-              {new Date(event.date).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </DialogDescription>
-          )}
-          {showScore && (
-            <DialogDescription className="text-base font-semibold text-foreground">
-              {formatScore(event.scores)}
-            </DialogDescription>
-          )}
-        </DialogHeader>
-
-        {isTicketMode && ticketBet && event && (
-          <div className="space-y-3 py-2 text-sm">
-            <dl className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2">
-              <dt className="text-muted-foreground">Bet ID</dt>
-              <dd className="font-mono font-medium">{ticketBet.betId}</dd>
-              <dt className="text-muted-foreground">Bettor</dt>
-              <dd className="font-mono text-xs">{shortAddress(ticketBet.bettor)}</dd>
-              <dt className="text-muted-foreground">Type</dt>
-              <dd>{betTypeLabel(ticketBet.betType)}</dd>
-              <dt className="text-muted-foreground">Pick</dt>
-              <dd>{placedOutcomeLabel(ticketBet.betType, ticketBet.outcome)}</dd>
-              {ticketLineShown !== null && (
-                <>
-                  <dt className="text-muted-foreground">Line</dt>
-                  <dd className="font-mono">{ticketLineShown}</dd>
-                </>
-              )}
-              <dt className="text-muted-foreground">Odds</dt>
-              <dd className="font-mono font-semibold">{decimalOddsFromChain(ticketBet.oddsTimes100)}</dd>
-              <dt className="text-muted-foreground">Stake</dt>
-              <dd className="font-mono font-semibold">{formatEther(ticketBet.amountWei)} ETH</dd>
-            </dl>
-          </div>
+      <DialogContent
+        className={cn(
+          "max-h-[85vh] overflow-y-auto",
+          showTicketChrome
+            ? "gap-0 border-0 bg-transparent p-3 shadow-none sm:max-w-md sm:p-4"
+            : "gap-4 sm:max-w-lg"
         )}
+      >
+        {showTicketChrome && ticketBet ? (
+          <div
+            className={cn(
+              "relative overflow-hidden rounded-xl border-2 border-amber-900/35 bg-gradient-to-br from-amber-50 via-[#fff7e8] to-amber-100",
+              "shadow-[0_14px_44px_-10px_rgba(60,30,0,0.28),inset_0_1px_0_rgba(255,255,255,0.65)]",
+              "dark:border-amber-600/40 dark:from-stone-950 dark:via-stone-900 dark:to-stone-950",
+              "dark:shadow-[0_14px_44px_-10px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)]"
+            )}
+          >
+            <div className="flex h-4 w-full items-center justify-center gap-1 border-b border-dashed border-amber-900/30 bg-amber-950/[0.04] px-2 dark:border-amber-600/35 dark:bg-black/30">
+              {Array.from({ length: 20 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="size-1 shrink-0 rounded-full bg-amber-900/35 dark:bg-amber-500/45"
+                />
+              ))}
+            </div>
+            <div className="flex min-h-0">
+              <div
+                className="w-2.5 shrink-0 bg-gradient-to-b from-amber-500 via-orange-600 to-amber-800 dark:from-amber-700 dark:via-amber-800 dark:to-amber-950"
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1 space-y-0 px-3 pb-0 pt-2.5 sm:px-4 sm:pt-3">
+                <p className="text-center font-mono text-[10px] font-bold uppercase tracking-[0.28em] text-amber-900/55 dark:text-amber-400/75">
+                  Wager ticket
+                </p>
+                {dialogHeader}
+                <div className="my-2.5 border-t border-dashed border-amber-900/30 dark:border-amber-600/35" />
+                {ticketBody}
+                <div className="my-3 border-t border-dashed border-amber-900/30 dark:border-amber-600/35" />
+                <TicketBarcode seed={ticketBet.betId} />
+                <p className="pb-2 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-amber-900/45 dark:text-amber-500/65">
+                  Non-transferable · Sepolia testnet
+                </p>
+              </div>
+              <div
+                className="w-2.5 shrink-0 bg-gradient-to-b from-amber-500 via-orange-600 to-amber-800 dark:from-amber-700 dark:via-amber-800 dark:to-amber-950"
+                aria-hidden
+              />
+            </div>
+            <DialogFooter className="border-t border-amber-900/20 bg-amber-950/[0.06] px-4 py-3 dark:border-amber-700/30 dark:bg-black/35 sm:justify-center">
+              <DialogClose asChild>
+                <Button
+                  variant="outline"
+                  className="min-w-[8rem] border-amber-900/35 bg-white/70 font-medium text-amber-950 hover:bg-white dark:border-amber-600/45 dark:bg-stone-900/90 dark:text-amber-50 dark:hover:bg-stone-900"
+                >
+                  Close
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </div>
+        ) : (
+          <>
+            {dialogHeader}
 
         {!isTicketMode && modalPhase === "stake" && event && (
           <div className="space-y-4 py-2">
@@ -703,11 +843,13 @@ export function EventOddsModal({
           </>
         )}
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">Close</Button>
-          </DialogClose>
-        </DialogFooter>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Close</Button>
+              </DialogClose>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

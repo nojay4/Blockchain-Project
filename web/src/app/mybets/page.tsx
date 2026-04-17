@@ -71,6 +71,7 @@ export default function MyBetsPage() {
               eventStatus={getEventDisplayStatus(ev)}
               scores={ev.scores}
               onJoin={() => openTicket(row)}
+              ctaLabel="View bet"
             />
           );
         })}
