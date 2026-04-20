@@ -83,5 +83,24 @@ def list_bets():
     tickets = get_tickets(bets)
     return jsonify(tickets)
 
+
+@app.route("/report-result", methods=["POST"])
+def report_result():
+    """Oracle submits reportResult after the sports API marks the event settled."""
+    from report_result import report_result_for_game
+
+    data = request.get_json(silent=True) or {}
+    game_id = data.get("gameId")
+    try:
+        out = report_result_for_game(game_id)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(out)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
