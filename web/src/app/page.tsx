@@ -5,9 +5,11 @@ import { getEvents, getOdds } from "@/lib/api";
 import type { Event, GetOddsResponse } from "@/types/sports";
 import { SportEventsList } from "@/components/SportEventsList";
 import { EventOddsModal } from "@/components/EventOddsModal";
+import { EventsPagination } from "@/components/EventsPagination";
+import { EventsSortToolbar } from "@/components/EventsSortToolbar";
 import { useBookmakers } from "@/contexts/BookmakersContext";
+import { usePaginatedEvents } from "@/hooks/use-paginated-events";
 
-const EVENTS_PAGE_SIZE = 10;
 const HOME_SPORT = "basketball";
 const HOME_LEAGUE = "usa-nba";
 
@@ -29,12 +31,21 @@ export default function Home() {
     setLoading(true);
     setError(null);
     getEvents(HOME_SPORT, HOME_LEAGUE)
-      .then((list) => setEvents(list.slice(0, EVENTS_PAGE_SIZE)))
+      .then((list) => setEvents(list))
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to load events")
       )
       .finally(() => setLoading(false));
   }, []);
+
+  const {
+    page,
+    setPage,
+    sortPrimary,
+    setSortPrimary,
+    pagedEvents,
+    totalPages,
+  } = usePaginatedEvents(events, `${HOME_SPORT}-${HOME_LEAGUE}`);
 
   const handleJoin = useCallback(
     async (event: Event) => {
@@ -74,11 +85,20 @@ export default function Home() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-12">
+      <EventsSortToolbar
+        sortPrimary={sortPrimary}
+        onSortPrimaryChange={setSortPrimary}
+      />
       <SportEventsList
-        events={events}
+        events={pagedEvents}
         sportTitle={slugToTitle(HOME_SPORT)}
         leagueTitle="NBA"
         onJoin={handleJoin}
+      />
+      <EventsPagination
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
       <EventOddsModal
         open={modalOpen}

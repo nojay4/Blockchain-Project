@@ -63,3 +63,40 @@ export interface GetOddsResponse {
   bookmakerIds?: Record<string, string>;
   bookmakers: BookmakersOddsMap;
 }
+
+// --- List bets (`/list-bets`) ---
+
+/** Bet fields from chain / oracle (snake_case). */
+export interface ListBetsBetRaw {
+  bettor: string;
+  game_id: string;
+  bet_type: number;
+  outcome: number;
+  line: number;
+  amount: number | string;
+  odds: number | string;
+}
+
+/** Event payload inside list-bets before mapping to `Event`. */
+export interface ListBetsEventRaw {
+  id: number;
+  home_team: string;
+  away_team: string;
+  date: string;
+  sport: Sport | string;
+  league: League | string;
+  status: EventStatus;
+  scores: Scores;
+}
+
+export interface ListBetsTicketRaw {
+  bet: ListBetsBetRaw;
+  event: ListBetsEventRaw;
+}
+
+/** One row per bet for UI (sorted newest-first by `betId`). */
+export interface ListBetsTicketRow {
+  betId: string;
+  bet: ListBetsBetRaw;
+  event: Event;
+}

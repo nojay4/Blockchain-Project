@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AppNavbar } from "@/components/AppNavbar";
+import { WagmiProviders } from "@/components/WagmiProviders";
 import { BookmakersProvider } from "@/contexts/BookmakersContext";
 
 export const metadata: Metadata = {
@@ -24,8 +25,10 @@ export default function RootLayout({
           strategy="beforeInteractive"
           dangerouslySetInnerHTML={{ __html: themeScript }}
         />
-        <AppNavbar />
-        <BookmakersProvider>{children}</BookmakersProvider>
+        <WagmiProviders>
+          <AppNavbar />
+          <BookmakersProvider>{children}</BookmakersProvider>
+        </WagmiProviders>
       </body>
     </html>
   );

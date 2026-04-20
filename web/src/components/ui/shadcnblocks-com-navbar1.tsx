@@ -50,6 +50,8 @@ export interface Navbar1Props {
     login: { text: string; url: string };
     signup: { text: string; url: string };
   };
+  /** When set, replaces placeholder Log in / Sign up with this slot (e.g. web3 connect). */
+  walletSlot?: React.ReactNode;
 }
 
 const defaultLogo = {
@@ -256,6 +258,7 @@ export function Navbar1({
   menu = defaultMenu,
   mobileExtraLinks = defaultMobileExtraLinks,
   auth = defaultAuth,
+  walletSlot,
 }: Navbar1Props) {
   return (
     <section className="py-4">
@@ -272,13 +275,18 @@ export function Navbar1({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {walletSlot}
             <ThemeToggle />
-            <Button asChild variant="outline" size="sm">
-              <Link href={auth.login.url}>{auth.login.text}</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href={auth.signup.url}>{auth.signup.text}</Link>
-            </Button>
+            {!walletSlot && (
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <Link href={auth.login.url}>{auth.login.text}</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href={auth.signup.url}>{auth.signup.text}</Link>
+                </Button>
+              </>
+            )}
           </div>
         </nav>
         <div className="block lg:hidden">
@@ -318,13 +326,18 @@ export function Navbar1({
                     </div>
                   </div>
                   <div className="flex flex-col gap-3">
+                    {walletSlot}
                     <ThemeToggle />
-                    <Button asChild variant="outline">
-                      <Link href={auth.login.url}>{auth.login.text}</Link>
-                    </Button>
-                    <Button asChild>
-                      <Link href={auth.signup.url}>{auth.signup.text}</Link>
-                    </Button>
+                    {!walletSlot && (
+                      <>
+                        <Button asChild variant="outline">
+                          <Link href={auth.login.url}>{auth.login.text}</Link>
+                        </Button>
+                        <Button asChild>
+                          <Link href={auth.signup.url}>{auth.signup.text}</Link>
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </SheetContent>

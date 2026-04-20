@@ -6,9 +6,10 @@ import { getEvents, getOdds } from "@/lib/api";
 import type { Event, GetOddsResponse } from "@/types/sports";
 import { SportEventsList } from "@/components/SportEventsList";
 import { EventOddsModal } from "@/components/EventOddsModal";
+import { EventsPagination } from "@/components/EventsPagination";
+import { EventsSortToolbar } from "@/components/EventsSortToolbar";
 import { useBookmakers } from "@/contexts/BookmakersContext";
-
-const EVENTS_PAGE_SIZE = 10;
+import { usePaginatedEvents } from "@/hooks/use-paginated-events";
 
 function slugToTitle(slug: string): string {
   return slug.charAt(0).toUpperCase() + slug.slice(1).replace(/-/g, " ");
@@ -31,7 +32,7 @@ export default function SportEventsPage() {
     setLoading(true);
     setError(null);
     getEvents(slug)
-      .then((list) => setEvents(list.slice(0, EVENTS_PAGE_SIZE)))
+      .then((list) => setEvents(list))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load events"))
       .finally(() => setLoading(false));
   }, [slug]);
@@ -56,6 +57,15 @@ export default function SportEventsPage() {
     [ensureBookmakers]
   );
 
+  const {
+    page,
+    setPage,
+    sortPrimary,
+    setSortPrimary,
+    pagedEvents,
+    totalPages,
+  } = usePaginatedEvents(events, slug ?? "");
+
   if (error) {
     return (
       <main className="mx-auto min-h-screen max-w-5xl px-4 py-12">
@@ -76,10 +86,19 @@ export default function SportEventsPage() {
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-12">
+      <EventsSortToolbar
+        sortPrimary={sortPrimary}
+        onSortPrimaryChange={setSortPrimary}
+      />
       <SportEventsList
-        events={events}
+        events={pagedEvents}
         sportTitle={sportTitle}
         onJoin={handleJoin}
+      />
+      <EventsPagination
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
       />
       <EventOddsModal
         open={modalOpen}
