@@ -22,18 +22,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { isBetValid } from "@/lib/bet-validation";
-import { postBetQuote } from "@/lib/api";
+import { postBetQuote, postReportResult } from "@/lib/api";
 import { sportsBettingAbi } from "@/lib/sports-betting-abi";
 import { getSportsBettingContractAddress } from "@/lib/contract-address";
 import {
   useAccount,
   useChainId,
   useConnect,
+  useReadContract,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
 import { sepolia } from "wagmi/chains";
-import { formatEther, parseEther } from "viem";
+import { formatEther, isAddressEqual, parseEther } from "viem";
 import {
   betTypeLabel,
   decimalOddsFromChain,
@@ -372,7 +373,48 @@ export function EventOddsModal({
   const chainId = useChainId();
   const { connectAsync, connectors, isPending: isConnectingWallet } = useConnect();
   const { switchChain, switchChainAsync } = useSwitchChain();
-  const { writeContractAsync, isPending: isPlacing } = useWriteContract();
+  const { writeContractAsync, isPending: isContractWritePending } = useWriteContract();
+
+  const contractAddr = getSportsBettingContractAddress();
+
+  const ticketGameId =
+    isTicketMode && event && ticketBet ? String(event.id) : undefined;
+  const ticketBetIdBigInt =
+    isTicketMode && ticketBet ? BigInt(ticketBet.betId) : undefined;
+
+  const {
+    data: onChainGame,
+    refetch: refetchGame,
+    isFetching: gameChainLoading,
+    error: gameReadError,
+  } = useReadContract({
+    address: contractAddr,
+    abi: sportsBettingAbi,
+    functionName: "getGame",
+    args: ticketGameId ? [ticketGameId] : undefined,
+    chainId: sepolia.id,
+    query: {
+      enabled: Boolean(open && isTicketMode && event && ticketBet && contractAddr),
+    },
+  });
+
+  const {
+    data: onChainBet,
+    refetch: refetchBet,
+    isFetching: betChainLoading,
+    error: betReadError,
+  } = useReadContract({
+    address: contractAddr,
+    abi: sportsBettingAbi,
+    functionName: "getBet",
+    args: ticketBetIdBigInt !== undefined ? [ticketBetIdBigInt] : undefined,
+    chainId: sepolia.id,
+    query: {
+      enabled: Boolean(
+        open && isTicketMode && ticketBet && contractAddr && ticketBetIdBigInt !== undefined
+      ),
+    },
+  });
 
   const [modalPhase, setModalPhase] = useState<"odds" | "stake">("odds");
   const [pick, setPick] = useState<0 | 1 | 2 | null>(null);
@@ -381,6 +423,10 @@ export function EventOddsModal({
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [stakeEth, setStakeEth] = useState("0.001");
+  const [settling, setSettling] = useState(false);
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [lastReportTxHash, setLastReportTxHash] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -391,6 +437,10 @@ export function EventOddsModal({
       setQuoteError(null);
       setPlaceError(null);
       setStakeEth("0.001");
+      setSettling(false);
+      setSettleError(null);
+      setClaimError(null);
+      setLastReportTxHash(null);
     }
   }, [open]);
 
@@ -455,7 +505,6 @@ export function EventOddsModal({
 
   const handlePlaceBet = async () => {
     setPlaceError(null);
-    const contractAddr = getSportsBettingContractAddress();
     if (!contractAddr) {
       setPlaceError(
         "Missing NEXT_PUBLIC_CONTRACT_ADDRESS. In web/, copy .env.example to .env.local and set it to the same value as CONTRACT_ADDRESS in the repo root .env."
@@ -517,6 +566,86 @@ export function EventOddsModal({
     } catch (e) {
       console.error(e);
       setPlaceError("Switch to Sepolia in your wallet.");
+    }
+  };
+
+  const chainGameStatus =
+    onChainGame != null && onChainGame.exists ? Number(onChainGame.status) : undefined;
+  const apiSettled = event?.status === "settled";
+  const showReportToChain =
+    isTicketMode &&
+    Boolean(
+      contractAddr &&
+        ticketGameId &&
+        apiSettled &&
+        onChainGame?.exists &&
+        chainGameStatus === 0 &&
+        !gameChainLoading &&
+        !betChainLoading
+    );
+  const showClaimPayout =
+    isTicketMode &&
+    Boolean(
+      contractAddr &&
+        onChainGame?.exists &&
+        chainGameStatus === 1 &&
+        onChainBet &&
+        !onChainBet.claimed &&
+        address &&
+        isAddressEqual(address, onChainBet.bettor)
+    );
+  const moneylineTicketWon =
+    ticketBet &&
+    onChainGame &&
+    ticketBet.betType === 0 &&
+    ticketBet.outcome === Number(onChainGame.result);
+  const claimDisabledNonWinner =
+    showClaimPayout && ticketBet && ticketBet.betType === 0 && !moneylineTicketWon;
+
+  const handleReportResult = async () => {
+    if (!ticketGameId) return;
+    setSettleError(null);
+    setLastReportTxHash(null);
+    setSettling(true);
+    try {
+      const out = await postReportResult(ticketGameId);
+      if (!out.alreadySettled && "txHash" in out) {
+        setLastReportTxHash(out.txHash);
+      }
+      await refetchGame();
+      await refetchBet();
+    } catch (e) {
+      console.error(e);
+      setSettleError(e instanceof Error ? e.message : "Report failed");
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const handleClaimWinnings = async () => {
+    setClaimError(null);
+    if (!contractAddr || !ticketBet) return;
+    if (chainId !== sepolia.id) {
+      try {
+        switchChain?.({ chainId: sepolia.id });
+      } catch (e) {
+        console.error(e);
+        setClaimError("Switch to Sepolia in your wallet.");
+      }
+      return;
+    }
+    try {
+      await writeContractAsync({
+        chainId: sepolia.id,
+        address: contractAddr,
+        abi: sportsBettingAbi,
+        functionName: "claimWinnings",
+        args: [BigInt(ticketBet.betId)],
+      });
+      await refetchBet();
+    } catch (e) {
+      console.error(e);
+      setClaimError(e instanceof Error ? e.message : "Claim failed");
     }
   };
 
@@ -667,6 +796,31 @@ export function EventOddsModal({
               "dark:shadow-[0_14px_44px_-10px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.06)]"
             )}
           >
+            {settling && (
+              <div
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-amber-950/45 px-4 text-center backdrop-blur-[2px] dark:bg-black/55"
+                role="status"
+                aria-live="polite"
+              >
+                <div
+                  className="h-9 w-9 animate-spin rounded-full border-2 border-white/35 border-t-white"
+                  aria-hidden
+                />
+                <p className="text-sm font-semibold text-white drop-shadow-sm dark:text-amber-50">
+                  Crunching the numbers…
+                </p>
+                {lastReportTxHash && (
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${lastReportTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono text-amber-100 underline underline-offset-2 hover:text-white"
+                  >
+                    View on Etherscan
+                  </a>
+                )}
+              </div>
+            )}
             <div className="flex h-4 w-full items-center justify-center gap-1 border-b border-dashed border-amber-900/30 bg-amber-950/[0.04] px-2 dark:border-amber-600/35 dark:bg-black/30">
               {Array.from({ length: 20 }).map((_, i) => (
                 <span
@@ -698,11 +852,81 @@ export function EventOddsModal({
                 aria-hidden
               />
             </div>
-            <DialogFooter className="border-t border-amber-900/20 bg-amber-950/[0.06] px-4 py-3 dark:border-amber-700/30 dark:bg-black/35 sm:justify-center">
+            <DialogFooter className="flex flex-col gap-2 border-t border-amber-900/20 bg-amber-950/[0.06] px-4 py-3 dark:border-amber-700/30 dark:bg-black/35 sm:justify-center">
+              {!contractAddr && (
+                <p className="text-center text-xs text-amber-900/80 dark:text-amber-200/85">
+                  Set NEXT_PUBLIC_CONTRACT_ADDRESS to settle or claim on-chain.
+                </p>
+              )}
+              {(gameChainLoading || betChainLoading) && (
+                <p className="text-center text-xs text-amber-900/75 dark:text-amber-200/80">
+                  Loading on-chain status…
+                </p>
+              )}
+              {(gameReadError || betReadError) && (
+                <p className="text-center text-xs text-red-700 dark:text-red-300">
+                  {(gameReadError && String(gameReadError.message || gameReadError)) ||
+                    (betReadError && String(betReadError.message || betReadError)) ||
+                    "Chain read failed"}
+                </p>
+              )}
+              {settleError && (
+                <p className="text-center text-xs text-red-700 dark:text-red-300">{settleError}</p>
+              )}
+              {claimError && (
+                <p className="text-center text-xs text-red-700 dark:text-red-300">{claimError}</p>
+              )}
+              {onChainGame && !onChainGame.exists && contractAddr && !gameChainLoading && (
+                <p className="text-center text-xs text-amber-900/80 dark:text-amber-200/85">
+                  This game is not on the contract yet (no matching game id).
+                </p>
+              )}
+              {showReportToChain && (
+                <Button
+                  type="button"
+                  className="w-full border-amber-900/40 bg-amber-600 text-white hover:bg-amber-700 dark:border-amber-500/50 dark:bg-amber-700 dark:hover:bg-amber-600"
+                  disabled={settling || !contractAddr}
+                  onClick={() => void handleReportResult()}
+                >
+                  {settling ? "Reporting…" : "Report result to chain"}
+                </Button>
+              )}
+              {showClaimPayout && (
+                <>
+                  {chainId !== sepolia.id && address && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => switchChain?.({ chainId: sepolia.id })}
+                    >
+                      Switch to Sepolia to claim
+                    </Button>
+                  )}
+                  {claimDisabledNonWinner && (
+                    <p className="text-center text-[11px] text-amber-900/75 dark:text-amber-200/80">
+                      This moneyline pick did not win — claiming would revert.
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    className="w-full border-emerald-900/30 bg-emerald-600 text-white hover:bg-emerald-700 dark:border-emerald-700/40 dark:bg-emerald-700 dark:hover:bg-emerald-600"
+                    disabled={
+                      claimDisabledNonWinner ||
+                      isContractWritePending ||
+                      !contractAddr ||
+                      chainId !== sepolia.id
+                    }
+                    onClick={() => void handleClaimWinnings()}
+                  >
+                    {isContractWritePending ? "Confirm in wallet…" : "Claim payout"}
+                  </Button>
+                </>
+              )}
               <DialogClose asChild>
                 <Button
                   variant="outline"
-                  className="min-w-[8rem] border-amber-900/35 bg-white/70 font-medium text-amber-950 hover:bg-white dark:border-amber-600/45 dark:bg-stone-900/90 dark:text-amber-50 dark:hover:bg-stone-900"
+                  className="min-w-[8rem] w-full border-amber-900/35 bg-white/70 font-medium text-amber-950 hover:bg-white dark:border-amber-600/45 dark:bg-stone-900/90 dark:text-amber-50 dark:hover:bg-stone-900"
                 >
                   Close
                 </Button>
@@ -769,8 +993,12 @@ export function EventOddsModal({
                       />
                     </div>
                     {placeError && <p className="text-sm text-destructive">{placeError}</p>}
-                    <Button type="button" disabled={isPlacing} onClick={() => void handlePlaceBet()}>
-                      {isPlacing ? "Confirm in wallet…" : "Place bet"}
+                    <Button
+                      type="button"
+                      disabled={isContractWritePending}
+                      onClick={() => void handlePlaceBet()}
+                    >
+                      {isContractWritePending ? "Confirm in wallet…" : "Place bet"}
                     </Button>
                   </>
                 )}

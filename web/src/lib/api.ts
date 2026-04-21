@@ -92,3 +92,26 @@ export async function getListBets(): Promise<ListBetsTicketRow[]> {
   rows.sort((a, b) => Number(b.betId) - Number(a.betId));
   return rows;
 }
+
+export type ReportResultResponse =
+  | { alreadySettled: true; gameId: string }
+  | { alreadySettled: false; gameId: string; txHash: string };
+
+export async function postReportResult(gameId: string): Promise<ReportResultResponse> {
+  const res = await fetch(`${API_BASE}/report-result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gameId }),
+  });
+  if (!res.ok) {
+    let message = "Report result failed";
+    try {
+      const err = (await res.json()) as { error?: string };
+      if (err?.error) message = err.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<ReportResultResponse>;
+}

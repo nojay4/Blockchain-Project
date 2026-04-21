@@ -8,6 +8,17 @@ import { EventOddsModal } from "@/components/EventOddsModal";
 import { getEventDisplayStatus } from "@/lib/event-status";
 import { ticketCardSubtitle, toBigIntWei } from "@/lib/placed-bet-labels";
 
+let inFlightListBetsRequest: Promise<ListBetsTicketRow[]> | null = null;
+
+function getListBetsWithInFlightGuard(): Promise<ListBetsTicketRow[]> {
+  if (!inFlightListBetsRequest) {
+    inFlightListBetsRequest = getListBets().finally(() => {
+      inFlightListBetsRequest = null;
+    });
+  }
+  return inFlightListBetsRequest;
+}
+
 export default function MyBetsPage() {
   const [tickets, setTickets] = useState<ListBetsTicketRow[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,7 +29,7 @@ export default function MyBetsPage() {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getListBets()
+    getListBetsWithInFlightGuard()
       .then(setTickets)
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to load bets")
