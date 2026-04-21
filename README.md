@@ -1,3 +1,26 @@
+# Decentralized Sports Prediction Market (PoC)
+
+## How to run
+
+After cloning the repository, work from the project root. Run the install script once: it creates a Python virtual environment for the oracle/backend, installs frontend and backend dependencies, and (if Foundry is installed) pulls contract libraries.
+
+```bash
+git clone <repository-url>
+cd Blockchain-Project
+chmod +x install.sh run.sh   # if needed on your machine
+./install.sh
+```
+
+When `install.sh` has finished successfully, start the app with `run.sh`. That script frees ports **3000** and **8000** if they are in use, then starts the Next.js frontend and the Flask Python API.
+
+```bash
+./run.sh
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser. The UI lists games for a given event. Connect a MetaMask wallet to place bets on the smart contract and claim winnings after a game has been settled (once the oracle has reported the result on-chain).
+
+---
+
 **Team members:** Carter Sammis, Emiliano Medina Gonzalez, Noah Turner
 
 
